@@ -19,6 +19,11 @@ def build_parser() -> argparse.ArgumentParser:
     scan_parser.add_argument("--json", action="store_true", dest="json_output")
     scan_parser.add_argument("--output", type=Path)
     scan_parser.add_argument(
+        "--investigator",
+        choices=("mock", "gemini"),
+        help="Override the investigator provider for this run.",
+    )
+    scan_parser.add_argument(
         "--config",
         dest="config_path",
         help="Path to a local advisory fixture JSON file.",
@@ -33,7 +38,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command != "scan":
         parser.error("Unsupported command")
 
-    config = load_config(args.config_path)
+    config = load_config(args.config_path, investigator_provider=args.investigator)
 
     try:
         result = run_scan(repo_path=args.repo_path, config=config)
@@ -52,4 +57,3 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

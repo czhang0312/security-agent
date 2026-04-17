@@ -1,18 +1,64 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import os
 from pathlib import Path
 
 
 @dataclass(slots=True)
 class Config:
     advisory_path: Path
+    investigator_provider: str = "mock"
+    gemini_api_key: str | None = None
+    gemini_model: str = "gemini-2.5-flash"
+    max_investigation_steps: int = 6
+    max_tool_output_chars: int = 4000
 
 
-def load_config(config_path: str | None = None) -> Config:
+def load_config(
+    config_path: str | None = None,
+    investigator_provider: str | None = None,
+) -> Config:
+    provider = (
+        investigator_provider
+        or os.getenv("SECURITY_AGENT_INVESTIGATOR_PROVIDER", "mock").strip().lower()
+        or "mock"
+    )
+    gemini_api_key = (
+        os.getenv("SECURITY_AGENT_GEMINI_API_KEY")
+        or os.getenv("GEMINI_API_KEY")
+        or None
+    )
+    gemini_model = os.getenv("SECURITY_AGENT_GEMINI_MODEL", "gemini-2.5-flash")
+    max_steps = _int_from_env("SECURITY_AGENT_MAX_INVESTIGATION_STEPS", 6)
+    max_chars = _int_from_env("SECURITY_AGENT_MAX_TOOL_OUTPUT_CHARS", 4000)
+
     if config_path is not None:
-        return Config(advisory_path=Path(config_path).expanduser().resolve())
+        return Config(
+            advisory_path=Path(config_path).expanduser().resolve(),
+            investigator_provider=provider,
+            gemini_api_key=gemini_api_key,
+            gemini_model=gemini_model,
+            max_investigation_steps=max_steps,
+            max_tool_output_chars=max_chars,
+        )
 
     default_path = Path(__file__).resolve().parent / "data" / "advisories.json"
-    return Config(advisory_path=default_path)
+    return Config(
+        advisory_path=default_path,
+        investigator_provider=provider,
+        gemini_api_key=gemini_api_key,
+        gemini_model=gemini_model,
+        max_investigation_steps=max_steps,
+        max_tool_output_chars=max_chars,
+    )
 
+
+def _int_from_env(name: str, default: int) -> int:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    try:
+        return int(value)
+    except ValueError:
+        return default

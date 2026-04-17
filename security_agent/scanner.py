@@ -3,7 +3,13 @@ from __future__ import annotations
 from security_agent.advisories import load_advisory_database, match_advisories
 from security_agent.bundler import parse_gemfile_lock
 from security_agent.config import Config
-from security_agent.investigation import InvestigationContext, MockInvestigator
+from security_agent.investigation import (
+    InvestigationContext,
+    InvestigationError,
+    InvestigationResult,
+    MockInvestigator,
+    build_investigator,
+)
 from security_agent.models import ScanResult, VulnerabilityFinding
 from security_agent.repo import UnsupportedRepoError, detect_repo
 
@@ -36,12 +42,16 @@ def run_scan(repo_path: str, config: Config) -> ScanResult:
                     severity=advisory.severity,
                     summary=advisory.summary,
                     fixed_versions=advisory.fixed_versions,
+                    require_names=advisory.require_names,
+                    namespaces=advisory.namespaces,
+                    symbols=advisory.symbols,
+                    advisory_notes=advisory.notes,
                 )
             )
 
     rank_milestone_one_findings(findings)
     findings.sort(key=_finding_sort_key)
-    investigate_top_finding(repo.root, findings)
+    investigate_top_finding(repo.root, findings, config)
 
     return ScanResult(
         repo_path=repo.root,
@@ -61,25 +71,36 @@ def rank_milestone_one_findings(findings: list[VulnerabilityFinding]) -> None:
             finding.priority = default_priority
 
 
-def investigate_top_finding(repo_root: str, findings: list[VulnerabilityFinding]) -> None:
+def investigate_top_finding(repo_root: str, findings: list[VulnerabilityFinding], config: Config) -> None:
     if not findings:
         return
 
-    investigator = MockInvestigator()
     selected = findings[0]
-    result = investigator.investigate(
-        InvestigationContext(
-            repo_root=repo_root,
-            finding=selected,
+    context = InvestigationContext(repo_root=repo_root, finding=selected)
+    try:
+        investigator = build_investigator(config)
+        result = investigator.investigate(context)
+    except InvestigationError as exc:
+        fallback_result = MockInvestigator().investigate(context)
+        fallback_result.assumptions.append(f"Gemini fallback activated: {exc}")
+        fallback_result.reasoning_summary = (
+            f"{fallback_result.reasoning_summary} Used mock investigator fallback."
         )
-    )
-    selected.investigated = True
-    selected.reachability_status = result.status
-    selected.confidence = result.confidence
-    selected.reasoning_summary = result.reasoning_summary
-    selected.assumptions = result.assumptions
-    selected.evidence = result.evidence
-    selected.commands_run = result.commands_run
+        result = fallback_result
+    apply_investigation_result(selected, result)
+
+
+def apply_investigation_result(
+    finding: VulnerabilityFinding,
+    result: InvestigationResult,
+) -> None:
+    finding.investigated = True
+    finding.reachability_status = result.status
+    finding.confidence = result.confidence
+    finding.reasoning_summary = result.reasoning_summary
+    finding.assumptions = result.assumptions
+    finding.evidence = result.evidence
+    finding.commands_run = result.commands_run
 
 
 def _finding_sort_key(finding: VulnerabilityFinding) -> tuple[int, int, str, str]:

@@ -2,9 +2,6 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
-from typing import Any
-
-
 def utc_now_iso() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
@@ -36,6 +33,10 @@ class Advisory:
     affected_versions: list[str]
     fixed_versions: list[str]
     cve: str | None = None
+    require_names: list[str] = field(default_factory=list)
+    namespaces: list[str] = field(default_factory=list)
+    symbols: list[str] = field(default_factory=list)
+    notes: str | None = None
 
 
 @dataclass(slots=True)
@@ -60,6 +61,11 @@ class VulnerabilityFinding:
     summary: str
     fixed_versions: list[str]
     cve: str | None = None
+    # confused why we need this for findings??
+    require_names: list[str] = field(default_factory=list)
+    namespaces: list[str] = field(default_factory=list)
+    symbols: list[str] = field(default_factory=list)
+    advisory_notes: str | None = None
     reachability_status: str = "not_investigated"
     confidence: float | None = None
     reasoning_summary: str | None = None

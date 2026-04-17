@@ -11,6 +11,15 @@
     ],
     "fixed_versions": [
       "7.0.8"
+    ],
+    "require_names": [
+      "rails"
+    ],
+    "namespaces": [
+      "Rails"
+    ],
+    "symbols": [
+      "Rails.application"
     ]
   },
   {
@@ -25,6 +34,15 @@
     ],
     "fixed_versions": [
       "1.16.3"
+    ],
+    "require_names": [
+      "nokogiri"
+    ],
+    "namespaces": [
+      "Nokogiri"
+    ],
+    "symbols": [
+      "Nokogiri::XML.parse"
     ]
   },
   {
@@ -38,7 +56,12 @@
     ],
     "fixed_versions": [
       "2.2.8"
+    ],
+    "require_names": [
+      "rack"
+    ],
+    "namespaces": [
+      "Rack"
     ]
   }
 ]
-
