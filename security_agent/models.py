@@ -39,6 +39,18 @@ class Advisory:
 
 
 @dataclass(slots=True)
+class EvidenceItem:
+    kind: str
+    summary: str
+    path: str | None = None
+    line: int | None = None
+    symbol: str | None = None
+    command: str | None = None
+    snippet: str | None = None
+    relevance: str | None = None
+
+
+@dataclass(slots=True)
 class VulnerabilityFinding:
     gem_name: str
     installed_version: str
@@ -50,7 +62,11 @@ class VulnerabilityFinding:
     cve: str | None = None
     reachability_status: str = "not_investigated"
     confidence: float | None = None
-    evidence: list[dict[str, Any]] = field(default_factory=list)
+    reasoning_summary: str | None = None
+    assumptions: list[str] = field(default_factory=list)
+    commands_run: list[str] = field(default_factory=list)
+    investigated: bool = False
+    evidence: list[EvidenceItem] = field(default_factory=list)
     priority: str = "unranked"
 
 
@@ -64,4 +80,3 @@ class ScanResult:
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
-

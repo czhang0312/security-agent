@@ -58,5 +58,9 @@ BUNDLED WITH
     assert len(result.findings) == 2
     assert result.findings[0].gem_name == "rails"
     assert result.findings[0].priority == "high"
+    assert result.findings[0].investigated is True
+    assert result.findings[0].reachability_status == "possibly_reachable"
+    assert result.findings[0].commands_run
     assert result.findings[1].gem_name == "rack"
     assert result.findings[1].priority == "low"
+    assert result.findings[1].investigated is False

@@ -3,6 +3,7 @@ from __future__ import annotations
 from security_agent.advisories import load_advisory_database, match_advisories
 from security_agent.bundler import parse_gemfile_lock
 from security_agent.config import Config
+from security_agent.investigation import InvestigationContext, MockInvestigator
 from security_agent.models import ScanResult, VulnerabilityFinding
 from security_agent.repo import UnsupportedRepoError, detect_repo
 
@@ -40,6 +41,7 @@ def run_scan(repo_path: str, config: Config) -> ScanResult:
 
     rank_milestone_one_findings(findings)
     findings.sort(key=_finding_sort_key)
+    investigate_top_finding(repo.root, findings)
 
     return ScanResult(
         repo_path=repo.root,
@@ -59,6 +61,27 @@ def rank_milestone_one_findings(findings: list[VulnerabilityFinding]) -> None:
             finding.priority = default_priority
 
 
+def investigate_top_finding(repo_root: str, findings: list[VulnerabilityFinding]) -> None:
+    if not findings:
+        return
+
+    investigator = MockInvestigator()
+    selected = findings[0]
+    result = investigator.investigate(
+        InvestigationContext(
+            repo_root=repo_root,
+            finding=selected,
+        )
+    )
+    selected.investigated = True
+    selected.reachability_status = result.status
+    selected.confidence = result.confidence
+    selected.reasoning_summary = result.reasoning_summary
+    selected.assumptions = result.assumptions
+    selected.evidence = result.evidence
+    selected.commands_run = result.commands_run
+
+
 def _finding_sort_key(finding: VulnerabilityFinding) -> tuple[int, int, str, str]:
     priority_order = {"high": 0, "medium": 1, "low": 2}
     severity_order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
@@ -68,4 +91,3 @@ def _finding_sort_key(finding: VulnerabilityFinding) -> tuple[int, int, str, str
         finding.gem_name,
         finding.advisory_id,
     )
-

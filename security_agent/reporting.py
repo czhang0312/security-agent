@@ -22,20 +22,37 @@ def render_terminal(result: ScanResult) -> str:
         fixed_versions = ", ".join(finding.fixed_versions) if finding.fixed_versions else "unknown"
         directness = "direct" if finding.direct_dependency else "transitive"
         identifier = finding.cve or finding.advisory_id
+        if finding.investigated:
+            confidence = f"{finding.confidence:.2f}" if finding.confidence is not None else "n/a"
+            reachability = finding.reachability_status
+        else:
+            confidence = "n/a"
+            reachability = "not_investigated"
         lines.extend(
             [
                 f"[{finding.priority.upper()}] {finding.gem_name} {finding.installed_version}",
                 f"  Advisory: {identifier}",
                 f"  Severity: {finding.severity} ({directness})",
+                f"  Reachability: {reachability}",
+                f"  Confidence: {confidence}",
                 f"  Summary: {finding.summary}",
                 f"  Fixed version: {fixed_versions}",
-                "",
             ]
         )
+        if finding.reasoning_summary:
+            lines.append(f"  Investigation: {finding.reasoning_summary}")
+        if finding.evidence:
+            for item in finding.evidence[:2]:
+                location = ""
+                if item.path and item.line is not None:
+                    location = f" ({item.path}:{item.line})"
+                elif item.path:
+                    location = f" ({item.path})"
+                lines.append(f"  Evidence: {item.summary}{location}")
+        lines.append("")
 
     return "\n".join(lines).rstrip()
 
 
 def render_json(result: ScanResult) -> str:
     return json.dumps(result.to_dict(), indent=2)
-
