@@ -1,0 +1,44 @@
+[
+  {
+    "id": "SA-2026-0001",
+    "cve": "CVE-2026-0001",
+    "gem_name": "rails",
+    "severity": "high",
+    "summary": "Sample advisory fixture for milestone 1 testing.",
+    "affected_versions": [
+      ">= 7.0.0",
+      "< 7.0.8"
+    ],
+    "fixed_versions": [
+      "7.0.8"
+    ]
+  },
+  {
+    "id": "SA-2026-0002",
+    "cve": "CVE-2026-0002",
+    "gem_name": "nokogiri",
+    "severity": "medium",
+    "summary": "Sample advisory fixture for milestone 1 testing.",
+    "affected_versions": [
+      ">= 1.15.0",
+      "< 1.16.3"
+    ],
+    "fixed_versions": [
+      "1.16.3"
+    ]
+  },
+  {
+    "id": "SA-2026-0003",
+    "gem_name": "rack",
+    "severity": "low",
+    "summary": "Sample advisory fixture for milestone 1 testing.",
+    "affected_versions": [
+      ">= 2.2.0",
+      "< 2.2.8"
+    ],
+    "fixed_versions": [
+      "2.2.8"
+    ]
+  }
+]
+
