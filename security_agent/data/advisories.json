@@ -63,5 +63,30 @@
     "namespaces": [
       "Rack"
     ]
+  },
+  {
+    "id": "SA-2026-0004",
+    "cve": "CVE-2025-24293",
+    "gem_name": "activestorage",
+    "severity": "high",
+    "summary": "Active Storage unsafe image transformation methods and parameters can enable command injection when untrusted input is accepted.",
+    "affected_versions": [
+      ">= 8.0.0",
+      "< 8.0.2.1"
+    ],
+    "fixed_versions": [
+      "8.0.2.1"
+    ],
+    "require_names": [
+      "activestorage"
+    ],
+    "namespaces": [
+      "ActiveStorage"
+    ],
+    "symbols": [
+      "ActiveStorage::Variant",
+      "ActiveStorage::Blob"
+    ],
+    "notes": "Upgrade activestorage to version 8.0.2.1 or later. Vulnerable when used with image_processing and mini_magick and user input controls transformation methods or parameters."
   }
 ]

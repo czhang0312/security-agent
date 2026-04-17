@@ -61,6 +61,7 @@ BUNDLED WITH
     assert result.findings[0].gem_name == "rails"
     assert result.findings[0].priority == "high"
     assert result.findings[0].investigated is True
+    assert result.findings[0].investigator_used == "mock"
     assert result.findings[0].reachability_status == "reachable"
     assert result.findings[0].commands_run
     assert result.findings[1].gem_name == "rack"
@@ -118,4 +119,5 @@ BUNDLED WITH
     assert len(result.findings) == 1
     assert result.findings[0].reachability_status == "reachable"
     assert result.findings[0].investigated is True
+    assert result.findings[0].investigator_used == "mock_fallback"
     assert any("Gemini fallback activated" in item for item in result.findings[0].assumptions)

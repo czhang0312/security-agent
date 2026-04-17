@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
+from typing import Any
+
+
 def utc_now_iso() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
@@ -72,6 +75,7 @@ class VulnerabilityFinding:
     assumptions: list[str] = field(default_factory=list)
     commands_run: list[str] = field(default_factory=list)
     investigated: bool = False
+    investigator_used: str | None = None
     evidence: list[EvidenceItem] = field(default_factory=list)
     priority: str = "unranked"
 

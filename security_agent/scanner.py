@@ -80,6 +80,7 @@ def investigate_top_finding(repo_root: str, findings: list[VulnerabilityFinding]
     try:
         investigator = build_investigator(config)
         result = investigator.investigate(context)
+        investigator_used = config.investigator_provider.lower()
     except InvestigationError as exc:
         fallback_result = MockInvestigator().investigate(context)
         fallback_result.assumptions.append(f"Gemini fallback activated: {exc}")
@@ -87,14 +88,17 @@ def investigate_top_finding(repo_root: str, findings: list[VulnerabilityFinding]
             f"{fallback_result.reasoning_summary} Used mock investigator fallback."
         )
         result = fallback_result
-    apply_investigation_result(selected, result)
+        investigator_used = "mock_fallback"
+    apply_investigation_result(selected, result, investigator_used)
 
 
 def apply_investigation_result(
     finding: VulnerabilityFinding,
     result: InvestigationResult,
+    investigator_used: str,
 ) -> None:
     finding.investigated = True
+    finding.investigator_used = investigator_used
     finding.reachability_status = result.status
     finding.confidence = result.confidence
     finding.reasoning_summary = result.reasoning_summary

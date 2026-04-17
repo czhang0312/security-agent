@@ -33,6 +33,7 @@ def render_terminal(result: ScanResult) -> str:
                 f"[{finding.priority.upper()}] {finding.gem_name} {finding.installed_version}",
                 f"  Advisory: {identifier}",
                 f"  Severity: {finding.severity} ({directness})",
+                f"  Investigator: {finding.investigator_used or 'not_run'}",
                 f"  Reachability: {reachability}",
                 f"  Confidence: {confidence}",
                 f"  Summary: {finding.summary}",
