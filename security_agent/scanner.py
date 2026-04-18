@@ -12,9 +12,16 @@ from security_agent.investigation import (
 )
 from security_agent.models import ScanResult, VulnerabilityFinding
 from security_agent.repo import UnsupportedRepoError, detect_repo
+from typing import Callable
+
+ProgressReporter = Callable[[str], None]
 
 
-def run_scan(repo_path: str, config: Config) -> ScanResult:
+def run_scan(
+    repo_path: str,
+    config: Config,
+    progress_reporter: ProgressReporter | None = None,
+) -> ScanResult:
     repo = detect_repo(repo_path)
     if repo.kind != "rails":
         raise UnsupportedRepoError(
@@ -51,7 +58,7 @@ def run_scan(repo_path: str, config: Config) -> ScanResult:
 
     rank_milestone_one_findings(findings)
     findings.sort(key=_finding_sort_key)
-    investigate_top_finding(repo.root, findings, config)
+    investigate_top_finding(repo.root, findings, config, progress_reporter=progress_reporter)
 
     return ScanResult(
         repo_path=repo.root,
@@ -71,7 +78,12 @@ def rank_milestone_one_findings(findings: list[VulnerabilityFinding]) -> None:
             finding.priority = default_priority
 
 
-def investigate_top_finding(repo_root: str, findings: list[VulnerabilityFinding], config: Config) -> None:
+def investigate_top_finding(
+    repo_root: str,
+    findings: list[VulnerabilityFinding],
+    config: Config,
+    progress_reporter: ProgressReporter | None = None,
+) -> None:
     if not findings:
         return
 
@@ -79,10 +91,12 @@ def investigate_top_finding(repo_root: str, findings: list[VulnerabilityFinding]
     context = InvestigationContext(repo_root=repo_root, finding=selected)
     provider_name = config.investigator_provider.lower()
     try:
-        investigator = build_investigator(config)
+        investigator = build_investigator(config, progress_reporter=progress_reporter)
         result = investigator.investigate(context)
         investigator_used = provider_name
     except InvestigationError as exc:
+        if progress_reporter is not None and provider_name == "openai":
+            progress_reporter("OpenAI failed, falling back to mock")
         fallback_result = MockInvestigator().investigate(context)
         fallback_result.assumptions.append(
             f"{provider_display_name(provider_name)} fallback activated: {exc}"

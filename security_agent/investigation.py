@@ -4,9 +4,10 @@ import json
 import re
 import shlex
 import subprocess
+import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Callable, Protocol
 from urllib import error, parse, request
 
 from security_agent.config import Config
@@ -54,6 +55,9 @@ class Investigator(Protocol):
 class PromptClient(Protocol):
     def generate(self, model: str, prompt: str) -> str:
         pass
+
+
+ProgressReporter = Callable[[str], None]
 
 
 class ShellCommandExecutor:
@@ -280,18 +284,25 @@ class BaseLLMInvestigator:
         max_steps: int = 6,
         max_tool_output_chars: int = 4000,
         executor: CommandExecutor | None = None,
+        progress_reporter: ProgressReporter | None = None,
     ) -> None:
         self.client = client
         self.model = model
         self.max_steps = max_steps
         self.max_tool_output_chars = max_tool_output_chars
         self.executor = executor or ShellCommandExecutor()
+        self.progress_reporter = progress_reporter
 
     def investigate(self, context: InvestigationContext) -> InvestigationResult:
         observations: list[dict[str, Any]] = []
         commands_run: list[str] = []
+        self.report_progress(
+            f"{self.provider_name}: investigating {context.finding.gem_name} {context.finding.installed_version}"
+        )
 
         for step_index in range(self.max_steps):
+            step_number = step_index + 1
+            self.report_progress(f"{self.provider_name} step {step_number}/{self.max_steps}: requesting model")
             prompt = self._build_prompt(context, observations, step_index + 1)
             response_text = self.client.generate(self.model, prompt)
             response = parse_agent_response(response_text)
@@ -299,6 +310,9 @@ class BaseLLMInvestigator:
 
             if action == "tool":
                 execution = execute_tool_action(self.executor, response, context.repo_root)
+                self.report_progress(
+                    f"{self.provider_name} step {step_number}/{self.max_steps}: running {truncate_command(execution.command)}"
+                )
                 commands_run.append(execution.command)
                 observations.append(
                     {
@@ -311,6 +325,9 @@ class BaseLLMInvestigator:
                 continue
 
             if action == "final":
+                self.report_progress(
+                    f"{self.provider_name} final: {str(response.get('status', 'unknown')).strip() or 'unknown'}"
+                )
                 return finalize_agent_response(response, commands_run)
 
             raise InvestigationError(
@@ -329,6 +346,10 @@ class BaseLLMInvestigator:
             evidence=[],
             commands_run=commands_run,
         )
+
+    def report_progress(self, message: str) -> None:
+        if self.progress_reporter is not None and self.provider_name == "OpenAI":
+            self.progress_reporter(message)
 
     def _build_prompt(
         self,
@@ -408,7 +429,11 @@ class OpenAIInvestigator(BaseLLMInvestigator):
     provider_name = "OpenAI"
 
 
-def build_investigator(config: Config, client: PromptClient | None = None) -> Investigator:
+def build_investigator(
+    config: Config,
+    client: PromptClient | None = None,
+    progress_reporter: ProgressReporter | None = None,
+) -> Investigator:
     provider = config.investigator_provider.lower()
     if provider == "gemini":
         if not config.gemini_api_key and client is None:
@@ -419,6 +444,7 @@ def build_investigator(config: Config, client: PromptClient | None = None) -> In
             model=config.gemini_model,
             max_steps=config.max_investigation_steps,
             max_tool_output_chars=config.max_tool_output_chars,
+            progress_reporter=progress_reporter,
         )
     if provider == "openai":
         if not config.openai_api_key and client is None:
@@ -429,8 +455,16 @@ def build_investigator(config: Config, client: PromptClient | None = None) -> In
             model=config.openai_model,
             max_steps=config.max_investigation_steps,
             max_tool_output_chars=config.max_tool_output_chars,
+            progress_reporter=progress_reporter,
         )
     return MockInvestigator()
+
+
+def make_stderr_progress_reporter() -> ProgressReporter:
+    def report(message: str) -> None:
+        print(message, file=sys.stderr, flush=True)
+
+    return report
 
 
 def existing_search_roots(repo_root: str) -> list[str]:
@@ -526,6 +560,12 @@ def execute_tool_action(
     if args[0] != tool_name:
         raise InvestigationError("Tool name must match args[0].")
     return executor.run([str(item) for item in args], cwd=repo_root)
+
+
+def truncate_command(command: str, limit: int = 120) -> str:
+    if len(command) <= limit:
+        return command
+    return f"{command[: limit - 3]}..."
 
 
 def finalize_agent_response(

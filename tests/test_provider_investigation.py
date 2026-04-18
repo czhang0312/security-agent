@@ -104,6 +104,7 @@ def test_gemini_investigator_executes_bounded_tool_loop() -> None:
 
 
 def test_openai_investigator_executes_bounded_tool_loop() -> None:
+    progress_messages: list[str] = []
     client = ScriptedClient(
         [
             {
@@ -145,6 +146,7 @@ def test_openai_investigator_executes_bounded_tool_loop() -> None:
         max_steps=3,
         max_tool_output_chars=500,
         executor=executor,
+        progress_reporter=progress_messages.append,
     )
 
     result = investigator.investigate(
@@ -155,9 +157,17 @@ def test_openai_investigator_executes_bounded_tool_loop() -> None:
     assert result.commands_run == ["ls app"]
     assert result.evidence[0].path == "app/services/parser.rb"
     assert len(client.prompts) == 2
+    assert progress_messages == [
+        "OpenAI: investigating nokogiri 1.16.0",
+        "OpenAI step 1/3: requesting model",
+        "OpenAI step 1/3: running ls app",
+        "OpenAI step 2/3: requesting model",
+        "OpenAI final: reachable",
+    ]
 
 
 def test_llm_investigator_returns_incomplete_result_on_step_limit() -> None:
+    progress_messages: list[str] = []
     client = ScriptedClient(
         [
             {
@@ -183,6 +193,7 @@ def test_llm_investigator_returns_incomplete_result_on_step_limit() -> None:
         max_steps=1,
         max_tool_output_chars=500,
         executor=executor,
+        progress_reporter=progress_messages.append,
     )
 
     result = investigator.investigate(
@@ -191,6 +202,11 @@ def test_llm_investigator_returns_incomplete_result_on_step_limit() -> None:
 
     assert result.status == "possibly_reachable"
     assert "did not complete" in result.reasoning_summary
+    assert progress_messages == [
+        "OpenAI: investigating nokogiri 1.16.0",
+        "OpenAI step 1/1: requesting model",
+        "OpenAI step 1/1: running ls app",
+    ]
 
 
 def test_llm_investigator_rejects_invalid_response() -> None:

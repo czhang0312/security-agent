@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Sequence
 
 from security_agent.config import load_config
+from security_agent.investigation import make_stderr_progress_reporter
 from security_agent.reporting import render_json, render_terminal
 from security_agent.repo import UnsupportedRepoError
 from security_agent.scanner import run_scan
@@ -39,9 +40,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         parser.error("Unsupported command")
 
     config = load_config(args.config_path, investigator_provider=args.investigator)
+    progress_reporter = make_stderr_progress_reporter()
 
     try:
-        result = run_scan(repo_path=args.repo_path, config=config)
+        result = run_scan(repo_path=args.repo_path, config=config, progress_reporter=progress_reporter)
     except UnsupportedRepoError as exc:
         parser.exit(status=2, message=f"error: {exc}\n")
 
