@@ -11,6 +11,8 @@ class Config:
     investigator_provider: str = "mock"
     gemini_api_key: str | None = None
     gemini_model: str = "gemini-2.5-flash"
+    openai_api_key: str | None = None
+    openai_model: str = "gpt-5-mini"
     max_investigation_steps: int = 6
     max_tool_output_chars: int = 4000
 
@@ -30,6 +32,12 @@ def load_config(
         or None
     )
     gemini_model = os.getenv("SECURITY_AGENT_GEMINI_MODEL", "gemini-2.5-flash")
+    openai_api_key = (
+        os.getenv("SECURITY_AGENT_OPENAI_API_KEY")
+        or os.getenv("OPENAI_API_KEY")
+        or None
+    )
+    openai_model = os.getenv("SECURITY_AGENT_OPENAI_MODEL", "gpt-5-mini")
     max_steps = _int_from_env("SECURITY_AGENT_MAX_INVESTIGATION_STEPS", 6)
     max_chars = _int_from_env("SECURITY_AGENT_MAX_TOOL_OUTPUT_CHARS", 4000)
 
@@ -39,6 +47,8 @@ def load_config(
             investigator_provider=provider,
             gemini_api_key=gemini_api_key,
             gemini_model=gemini_model,
+            openai_api_key=openai_api_key,
+            openai_model=openai_model,
             max_investigation_steps=max_steps,
             max_tool_output_chars=max_chars,
         )
@@ -49,6 +59,8 @@ def load_config(
         investigator_provider=provider,
         gemini_api_key=gemini_api_key,
         gemini_model=gemini_model,
+        openai_api_key=openai_api_key,
+        openai_model=openai_model,
         max_investigation_steps=max_steps,
         max_tool_output_chars=max_chars,
     )

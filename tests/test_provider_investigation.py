@@ -4,18 +4,22 @@ from security_agent.investigation import (
     CommandExecution,
     GeminiInvestigator,
     InvestigationContext,
+    InvestigationError,
+    OpenAIInvestigator,
 )
 from security_agent.models import VulnerabilityFinding
 
 
-class ScriptedGeminiClient:
-    def __init__(self, responses: list[dict]) -> None:
+class ScriptedClient:
+    def __init__(self, responses: list[dict | str]) -> None:
         self.responses = responses
         self.prompts: list[str] = []
 
     def generate(self, model: str, prompt: str) -> str:
         self.prompts.append(prompt)
         response = self.responses.pop(0)
+        if isinstance(response, str):
+            return response
         return json.dumps(response)
 
 
@@ -46,7 +50,7 @@ def make_finding() -> VulnerabilityFinding:
 
 
 def test_gemini_investigator_executes_bounded_tool_loop() -> None:
-    client = ScriptedGeminiClient(
+    client = ScriptedClient(
         [
             {
                 "action": "tool",
@@ -99,9 +103,62 @@ def test_gemini_investigator_executes_bounded_tool_loop() -> None:
     assert len(client.prompts) == 2
 
 
-def test_gemini_investigator_returns_incomplete_result_on_step_limit() -> None:
-    # 
-    client = ScriptedGeminiClient(
+def test_openai_investigator_executes_bounded_tool_loop() -> None:
+    client = ScriptedClient(
+        [
+            {
+                "action": "tool",
+                "tool": "ls",
+                "args": ["ls", "app"],
+            },
+            {
+                "action": "final",
+                "status": "reachable",
+                "confidence": 0.74,
+                "reasoning_summary": "Observed application entrypoints that invoke vulnerable code.",
+                "assumptions": ["The observed Rails service is part of the request flow."],
+                "evidence": [
+                    {
+                        "kind": "text_match",
+                        "summary": "Matched parser service reference",
+                        "path": "app/services/parser.rb",
+                        "line": 1,
+                        "snippet": "class Parser",
+                    }
+                ],
+            },
+        ]
+    )
+    executor = FakeExecutor(
+        {
+            ("ls", "app"): CommandExecution(
+                command="ls app",
+                exit_code=0,
+                stdout="services\n",
+                stderr="",
+            )
+        }
+    )
+    investigator = OpenAIInvestigator(
+        client=client,
+        model="gpt-test",
+        max_steps=3,
+        max_tool_output_chars=500,
+        executor=executor,
+    )
+
+    result = investigator.investigate(
+        InvestigationContext(repo_root="/tmp/repo", finding=make_finding())
+    )
+
+    assert result.status == "reachable"
+    assert result.commands_run == ["ls app"]
+    assert result.evidence[0].path == "app/services/parser.rb"
+    assert len(client.prompts) == 2
+
+
+def test_llm_investigator_returns_incomplete_result_on_step_limit() -> None:
+    client = ScriptedClient(
         [
             {
                 "action": "tool",
@@ -120,9 +177,9 @@ def test_gemini_investigator_returns_incomplete_result_on_step_limit() -> None:
             )
         }
     )
-    investigator = GeminiInvestigator(
+    investigator = OpenAIInvestigator(
         client=client,
-        model="gemini-test",
+        model="gpt-test",
         max_steps=1,
         max_tool_output_chars=500,
         executor=executor,
@@ -135,3 +192,14 @@ def test_gemini_investigator_returns_incomplete_result_on_step_limit() -> None:
     assert result.status == "possibly_reachable"
     assert "did not complete" in result.reasoning_summary
 
+
+def test_llm_investigator_rejects_invalid_response() -> None:
+    client = ScriptedClient(["not-json"])
+    investigator = OpenAIInvestigator(client=client, model="gpt-test")
+
+    try:
+        investigator.investigate(InvestigationContext(repo_root="/tmp/repo", finding=make_finding()))
+    except InvestigationError as exc:
+        assert "parse" in str(exc).lower()
+    else:
+        raise AssertionError("Expected InvestigationError for invalid provider response")

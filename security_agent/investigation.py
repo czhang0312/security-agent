@@ -51,7 +51,7 @@ class Investigator(Protocol):
         pass
 
 
-class GeminiClient(Protocol):
+class PromptClient(Protocol):
     def generate(self, model: str, prompt: str) -> str:
         pass
 
@@ -115,6 +115,44 @@ class HttpGeminiClient:
             return body["candidates"][0]["content"]["parts"][0]["text"]
         except (KeyError, IndexError, TypeError) as exc:
             raise InvestigationError("Gemini response did not include text content.") from exc
+
+
+class HttpOpenAIClient:
+    API_URL = "https://api.openai.com/v1/responses"
+
+    def __init__(self, api_key: str) -> None:
+        self.api_key = api_key
+
+    def generate(self, model: str, prompt: str) -> str:
+        payload = json.dumps(
+            {
+                "model": model,
+                "input": prompt,
+                "text": {"format": {"type": "json_object"}},
+            }
+        ).encode("utf-8")
+        http_request = request.Request(
+            self.API_URL,
+            data=payload,
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {self.api_key}",
+            },
+            method="POST",
+        )
+        try:
+            with request.urlopen(http_request, timeout=30) as response:
+                body = json.loads(response.read().decode("utf-8"))
+        except error.HTTPError as exc:
+            details = exc.read().decode("utf-8", errors="replace")
+            raise InvestigationError(f"OpenAI API request failed: {exc.code} {details}") from exc
+        except error.URLError as exc:
+            raise InvestigationError(f"OpenAI API request failed: {exc.reason}") from exc
+
+        output_text = extract_response_output_text(body)
+        if output_text is None:
+            raise InvestigationError("OpenAI response did not include text content.")
+        return output_text
 
 
 class MockInvestigator:
@@ -232,10 +270,12 @@ class MockInvestigator:
         )
 
 
-class GeminiInvestigator:
+class BaseLLMInvestigator:
+    provider_name = "llm"
+
     def __init__(
         self,
-        client: GeminiClient,
+        client: PromptClient,
         model: str,
         max_steps: int = 6,
         max_tool_output_chars: int = 4000,
@@ -258,15 +298,7 @@ class GeminiInvestigator:
             action = response.get("action")
 
             if action == "tool":
-                tool_name = str(response.get("tool", "")).strip()
-                args = response.get("args")
-                if not isinstance(args, list):
-                    raise InvestigationError("Gemini tool request must include an args list.")
-                if not args:
-                    raise InvestigationError("Gemini tool request cannot be empty.")
-                if args[0] != tool_name:
-                    raise InvestigationError("Gemini tool name must match args[0].")
-                execution = self.executor.run([str(item) for item in args], cwd=context.repo_root)
+                execution = execute_tool_action(self.executor, response, context.repo_root)
                 commands_run.append(execution.command)
                 observations.append(
                     {
@@ -279,16 +311,18 @@ class GeminiInvestigator:
                 continue
 
             if action == "final":
-                # early return on final decision, skipping remaining steps
-                return self._finalize(response, commands_run)
+                return finalize_agent_response(response, commands_run)
 
-            raise InvestigationError("Gemini response must request a tool or return a final decision.")
+            raise InvestigationError(
+                f"{self.provider_name} response must request a tool or return a final decision."
+            )
 
-        # if we reach here, it means did not early return so failed to reach a final decision within the step limit
         return InvestigationResult(
             status="possibly_reachable",
             confidence=0.25,
-            reasoning_summary="Gemini investigation did not complete within the configured step limit.",
+            reasoning_summary=(
+                f"{self.provider_name} investigation did not complete within the configured step limit."
+            ),
             assumptions=[
                 "The model exhausted the bounded investigation loop before returning a final decision."
             ],
@@ -365,53 +399,16 @@ Respond with one of:
 }}
 """.strip()
 
-    def _finalize(self, response: dict[str, Any], commands_run: list[str]) -> InvestigationResult:
-        status = str(response.get("status", "")).strip()
-        if status not in {"reachable", "possibly_reachable", "not_observed"}:
-            raise InvestigationError("Gemini final response returned an invalid status.")
 
-        try:
-            confidence = float(response.get("confidence"))
-        except (TypeError, ValueError) as exc:
-            raise InvestigationError("Gemini final response returned an invalid confidence.") from exc
-
-        evidence_payload = response.get("evidence", [])
-        if not isinstance(evidence_payload, list):
-            raise InvestigationError("Gemini final response returned invalid evidence.")
-
-        evidence = [
-            EvidenceItem(
-                kind=str(item.get("kind", "reasoning_note")),
-                summary=str(item.get("summary", "")),
-                path=str(item["path"]) if item.get("path") is not None else None,
-                line=int(item["line"]) if item.get("line") is not None else None,
-                symbol=str(item["symbol"]) if item.get("symbol") is not None else None,
-                snippet=str(item["snippet"]) if item.get("snippet") is not None else None,
-                relevance="gemini_final_response",
-            )
-            for item in evidence_payload
-            if isinstance(item, dict)
-        ]
-
-        assumptions = response.get("assumptions", [])
-        if not isinstance(assumptions, list):
-            raise InvestigationError("Gemini final response returned invalid assumptions.")
-
-        reasoning_summary = str(response.get("reasoning_summary", "")).strip()
-        if not reasoning_summary:
-            raise InvestigationError("Gemini final response did not include a reasoning summary.")
-
-        return InvestigationResult(
-            status=status,
-            confidence=confidence,
-            reasoning_summary=reasoning_summary,
-            assumptions=[str(item) for item in assumptions],
-            evidence=evidence,
-            commands_run=commands_run,
-        )
+class GeminiInvestigator(BaseLLMInvestigator):
+    provider_name = "Gemini"
 
 
-def build_investigator(config: Config, client: GeminiClient | None = None) -> Investigator:
+class OpenAIInvestigator(BaseLLMInvestigator):
+    provider_name = "OpenAI"
+
+
+def build_investigator(config: Config, client: PromptClient | None = None) -> Investigator:
     provider = config.investigator_provider.lower()
     if provider == "gemini":
         if not config.gemini_api_key and client is None:
@@ -420,6 +417,16 @@ def build_investigator(config: Config, client: GeminiClient | None = None) -> In
         return GeminiInvestigator(
             client=gemini_client,
             model=config.gemini_model,
+            max_steps=config.max_investigation_steps,
+            max_tool_output_chars=config.max_tool_output_chars,
+        )
+    if provider == "openai":
+        if not config.openai_api_key and client is None:
+            raise InvestigationError("OpenAI investigator selected but no API key is configured.")
+        openai_client = client or HttpOpenAIClient(config.openai_api_key or "")
+        return OpenAIInvestigator(
+            client=openai_client,
+            model=config.openai_model,
             max_steps=config.max_investigation_steps,
             max_tool_output_chars=config.max_tool_output_chars,
         )
@@ -498,8 +505,92 @@ def parse_agent_response(response_text: str) -> dict[str, Any]:
     try:
         parsed = json.loads(cleaned)
     except json.JSONDecodeError as exc:
-        raise InvestigationError(f"Failed to parse Gemini response as JSON: {cleaned}") from exc
+        raise InvestigationError(f"Failed to parse model response as JSON: {cleaned}") from exc
 
     if not isinstance(parsed, dict):
-        raise InvestigationError("Gemini response must be a JSON object.")
+        raise InvestigationError("Model response must be a JSON object.")
     return parsed
+
+
+def execute_tool_action(
+    executor: CommandExecutor,
+    response: dict[str, Any],
+    repo_root: str,
+) -> CommandExecution:
+    tool_name = str(response.get("tool", "")).strip()
+    args = response.get("args")
+    if not isinstance(args, list):
+        raise InvestigationError("Tool request must include an args list.")
+    if not args:
+        raise InvestigationError("Tool request cannot be empty.")
+    if args[0] != tool_name:
+        raise InvestigationError("Tool name must match args[0].")
+    return executor.run([str(item) for item in args], cwd=repo_root)
+
+
+def finalize_agent_response(
+    response: dict[str, Any],
+    commands_run: list[str],
+) -> InvestigationResult:
+    status = str(response.get("status", "")).strip()
+    if status not in {"reachable", "possibly_reachable", "not_observed"}:
+        raise InvestigationError("Final response returned an invalid status.")
+
+    try:
+        confidence = float(response.get("confidence"))
+    except (TypeError, ValueError) as exc:
+        raise InvestigationError("Final response returned an invalid confidence.") from exc
+
+    evidence_payload = response.get("evidence", [])
+    if not isinstance(evidence_payload, list):
+        raise InvestigationError("Final response returned invalid evidence.")
+
+    evidence = [
+        EvidenceItem(
+            kind=str(item.get("kind", "reasoning_note")),
+            summary=str(item.get("summary", "")),
+            path=str(item["path"]) if item.get("path") is not None else None,
+            line=int(item["line"]) if item.get("line") is not None else None,
+            symbol=str(item["symbol"]) if item.get("symbol") is not None else None,
+            snippet=str(item["snippet"]) if item.get("snippet") is not None else None,
+            relevance="llm_final_response",
+        )
+        for item in evidence_payload
+        if isinstance(item, dict)
+    ]
+
+    assumptions = response.get("assumptions", [])
+    if not isinstance(assumptions, list):
+        raise InvestigationError("Final response returned invalid assumptions.")
+
+    reasoning_summary = str(response.get("reasoning_summary", "")).strip()
+    if not reasoning_summary:
+        raise InvestigationError("Final response did not include a reasoning summary.")
+
+    return InvestigationResult(
+        status=status,
+        confidence=confidence,
+        reasoning_summary=reasoning_summary,
+        assumptions=[str(item) for item in assumptions],
+        evidence=evidence,
+        commands_run=commands_run,
+    )
+
+
+def extract_response_output_text(body: dict[str, Any]) -> str | None:
+    output = body.get("output")
+    if isinstance(output, list):
+        for item in output:
+            if not isinstance(item, dict):
+                continue
+            content = item.get("content")
+            if isinstance(content, list):
+                for part in content:
+                    if not isinstance(part, dict):
+                        continue
+                    if part.get("type") in {"output_text", "text"} and isinstance(part.get("text"), str):
+                        return part["text"]
+    output_text = body.get("output_text")
+    if isinstance(output_text, str):
+        return output_text
+    return None

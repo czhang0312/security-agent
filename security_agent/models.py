@@ -64,7 +64,6 @@ class VulnerabilityFinding:
     summary: str
     fixed_versions: list[str]
     cve: str | None = None
-    # confused why we need this for findings??
     require_names: list[str] = field(default_factory=list)
     namespaces: list[str] = field(default_factory=list)
     symbols: list[str] = field(default_factory=list)

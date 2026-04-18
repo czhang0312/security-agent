@@ -12,7 +12,7 @@ def test_render_terminal_includes_investigation_details() -> None:
         summary="fixture",
         fixed_versions=["7.0.8"],
         investigated=True,
-        investigator_used="gemini",
+        investigator_used="openai",
         reachability_status="reachable",
         confidence=0.86,
         reasoning_summary="Observed rails referenced from application code.",
@@ -35,7 +35,7 @@ def test_render_terminal_includes_investigation_details() -> None:
 
     rendered = render_terminal(result)
 
-    assert "Investigator: gemini" in rendered
+    assert "Investigator: openai" in rendered
     assert "Reachability: reachable" in rendered
     assert "Confidence: 0.86" in rendered
     assert "Investigation: Observed rails referenced from application code." in rendered

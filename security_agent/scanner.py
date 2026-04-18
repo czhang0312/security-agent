@@ -77,13 +77,16 @@ def investigate_top_finding(repo_root: str, findings: list[VulnerabilityFinding]
 
     selected = findings[0]
     context = InvestigationContext(repo_root=repo_root, finding=selected)
+    provider_name = config.investigator_provider.lower()
     try:
         investigator = build_investigator(config)
         result = investigator.investigate(context)
-        investigator_used = config.investigator_provider.lower()
+        investigator_used = provider_name
     except InvestigationError as exc:
         fallback_result = MockInvestigator().investigate(context)
-        fallback_result.assumptions.append(f"Gemini fallback activated: {exc}")
+        fallback_result.assumptions.append(
+            f"{provider_display_name(provider_name)} fallback activated: {exc}"
+        )
         fallback_result.reasoning_summary = (
             f"{fallback_result.reasoning_summary} Used mock investigator fallback."
         )
@@ -116,3 +119,11 @@ def _finding_sort_key(finding: VulnerabilityFinding) -> tuple[int, int, str, str
         finding.gem_name,
         finding.advisory_id,
     )
+
+
+def provider_display_name(provider_name: str) -> str:
+    return {
+        "openai": "OpenAI",
+        "gemini": "Gemini",
+        "mock": "Mock",
+    }.get(provider_name, provider_name)

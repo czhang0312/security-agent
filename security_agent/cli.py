@@ -20,7 +20,7 @@ def build_parser() -> argparse.ArgumentParser:
     scan_parser.add_argument("--output", type=Path)
     scan_parser.add_argument(
         "--investigator",
-        choices=("mock", "gemini"),
+        choices=("mock", "gemini", "openai"),
         help="Override the investigator provider for this run.",
     )
     scan_parser.add_argument(
