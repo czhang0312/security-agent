@@ -2,7 +2,8 @@ from pathlib import Path
 
 from security_agent.advisories import AdvisoryDataUnavailableError
 from security_agent.config import Config
-from security_agent.scanner import run_scan
+from security_agent.models import VulnerabilityFinding
+from security_agent.scanner import calculate_priority, run_scan
 
 
 def test_run_scan_returns_findings_for_sample_rails_repo(tmp_path: Path) -> None:
@@ -121,6 +122,7 @@ BUNDLED WITH
     assert result.findings[0].reachability_status == "reachable"
     assert result.findings[0].investigated is True
     assert result.findings[0].investigator_used == "mock_fallback"
+    assert result.findings[0].priority == "high"
     assert any("Gemini fallback activated" in item for item in result.findings[0].assumptions)
 
 
@@ -175,6 +177,7 @@ BUNDLED WITH
     assert result.findings[0].reachability_status == "reachable"
     assert result.findings[0].investigated is True
     assert result.findings[0].investigator_used == "mock_fallback"
+    assert result.findings[0].priority == "high"
     assert any("OpenAI fallback activated" in item for item in result.findings[0].assumptions)
 
 
@@ -206,3 +209,51 @@ BUNDLED WITH
         assert "advisories update" in str(exc)
     else:
         raise AssertionError("Expected AdvisoryDataUnavailableError")
+
+
+def test_calculate_priority_promotes_high_severity_possible_reachability() -> None:
+    finding = VulnerabilityFinding(
+        gem_name="activestorage",
+        installed_version="8.0.2",
+        direct_dependency=False,
+        advisory_id="GHSA-test",
+        severity="high",
+        summary="fixture",
+        fixed_versions=["8.0.2.1"],
+        investigated=True,
+        reachability_status="possibly_reachable",
+        confidence=0.75,
+    )
+
+    assert calculate_priority(finding) == "high"
+
+
+def test_calculate_priority_keeps_critical_uninvestigated_as_medium() -> None:
+    finding = VulnerabilityFinding(
+        gem_name="nokogiri",
+        installed_version="1.18.8",
+        direct_dependency=False,
+        advisory_id="GHSA-test",
+        severity="critical",
+        summary="fixture",
+        fixed_versions=["1.18.9"],
+    )
+
+    assert calculate_priority(finding) == "medium"
+
+
+def test_calculate_priority_normalizes_moderate_to_medium() -> None:
+    finding = VulnerabilityFinding(
+        gem_name="thor",
+        installed_version="1.3.2",
+        direct_dependency=True,
+        advisory_id="GHSA-test",
+        severity="moderate",
+        summary="fixture",
+        fixed_versions=["1.4.0"],
+        investigated=True,
+        reachability_status="not_observed",
+        confidence=0.1,
+    )
+
+    assert calculate_priority(finding) == "low"

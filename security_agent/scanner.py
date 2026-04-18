@@ -56,9 +56,11 @@ def run_scan(
                 )
             )
 
-    rank_milestone_one_findings(findings)
+    rank_findings_for_selection(findings)
     findings.sort(key=_finding_sort_key)
     investigate_top_finding(repo.root, findings, config, progress_reporter=progress_reporter)
+    rank_findings(findings)
+    findings.sort(key=_finding_sort_key)
 
     return ScanResult(
         repo_path=repo.root,
@@ -68,14 +70,19 @@ def run_scan(
     )
 
 
-def rank_milestone_one_findings(findings: list[VulnerabilityFinding]) -> None:
-    severity_order = {"critical": "high", "high": "high", "medium": "medium"}
+def rank_findings_for_selection(findings: list[VulnerabilityFinding]) -> None:
     for finding in findings:
-        default_priority = severity_order.get(finding.severity.lower(), "low")
+        severity = normalize_severity(finding.severity)
+        default_priority = {"critical": "high", "high": "high", "medium": "medium"}.get(severity, "low")
         if default_priority == "high" and not finding.direct_dependency:
             finding.priority = "medium"
         else:
             finding.priority = default_priority
+
+
+def rank_findings(findings: list[VulnerabilityFinding]) -> None:
+    for finding in findings:
+        finding.priority = calculate_priority(finding)
 
 
 def investigate_top_finding(
@@ -124,12 +131,15 @@ def apply_investigation_result(
     finding.commands_run = result.commands_run
 
 
-def _finding_sort_key(finding: VulnerabilityFinding) -> tuple[int, int, str, str]:
+def _finding_sort_key(finding: VulnerabilityFinding) -> tuple[int, int, int, int, int, str, str]:
     priority_order = {"high": 0, "medium": 1, "low": 2}
-    severity_order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
+    severity_order = {"critical": 0, "high": 1, "medium": 2, "low": 3, "unknown": 4}
     return (
         priority_order.get(finding.priority, 99),
-        severity_order.get(finding.severity.lower(), 99),
+        severity_order.get(normalize_severity(finding.severity), 99),
+        0 if finding.investigated else 1,
+        0 if finding.reachability_status == "reachable" else 1 if finding.reachability_status == "possibly_reachable" else 2,
+        -int((finding.confidence or 0) * 100),
         finding.gem_name,
         finding.advisory_id,
     )
@@ -141,3 +151,47 @@ def provider_display_name(provider_name: str) -> str:
         "gemini": "Gemini",
         "mock": "Mock",
     }.get(provider_name, provider_name)
+
+
+def normalize_severity(severity: str) -> str:
+    normalized = severity.strip().lower()
+    return {
+        "critical": "critical",
+        "high": "high",
+        "medium": "medium",
+        "moderate": "medium",
+        "low": "low",
+    }.get(normalized, "unknown")
+
+
+def calculate_priority(finding: VulnerabilityFinding) -> str:
+    severity = normalize_severity(finding.severity)
+
+    if finding.investigated:
+        status = finding.reachability_status
+        confidence = finding.confidence or 0.0
+
+        if status == "reachable":
+            if severity in {"critical", "high"}:
+                return "high"
+            if severity == "medium":
+                return "medium" if confidence < 0.8 else "high"
+            return "medium" if confidence >= 0.8 else "low"
+
+        if status == "possibly_reachable":
+            if severity in {"critical", "high"}:
+                return "high" if confidence >= 0.6 else "medium"
+            if severity == "medium":
+                return "medium"
+            return "low"
+
+        if status == "not_observed":
+            if severity == "critical" and finding.direct_dependency:
+                return "medium"
+            return "low"
+
+    if severity in {"critical", "high"}:
+        return "medium"
+    if severity == "medium":
+        return "medium" if finding.direct_dependency else "low"
+    return "low"
