@@ -130,6 +130,9 @@ def parse_github_advisory_archive(
 
 
 def normalize_osv_record(record: dict) -> list[Advisory]:
+    if record.get("withdrawn"):
+        return []
+
     advisory_id = str(record.get("id", "")).strip()
     summary = str(record.get("summary", "")).strip()
     aliases = record.get("aliases", [])

@@ -143,6 +143,28 @@ def test_normalize_osv_record_filters_rubygems_and_maps_ranges() -> None:
     assert "Detailed advisory text." in (advisories[0].notes or "")
 
 
+def test_normalize_osv_record_skips_withdrawn_advisories() -> None:
+    record = {
+        "id": "GHSA-withdrawn-0001",
+        "summary": "Withdrawn advisory",
+        "withdrawn": "2026-01-15T00:00:00Z",
+        "database_specific": {"severity": "high"},
+        "affected": [
+            {
+                "package": {"ecosystem": "RubyGems", "name": "thor"},
+                "ranges": [
+                    {
+                        "type": "ECOSYSTEM",
+                        "events": [{"introduced": "1.0.0"}, {"fixed": "1.4.0"}],
+                    }
+                ],
+            }
+        ],
+    }
+
+    assert normalize_osv_record(record) == []
+
+
 def test_update_advisory_cache_writes_normalized_json_from_archive(tmp_path: Path) -> None:
     archive_path = tmp_path / "github-advisories.tar.gz"
     destination = tmp_path / "cache" / "advisories.json"
@@ -188,6 +210,68 @@ def test_update_advisory_cache_writes_normalized_json_from_archive(tmp_path: Pat
     assert cached[0]["id"] == "GHSA-1234-5678-9012"
     assert cached[0]["gem_name"] == "rails"
     assert any("Downloading advisory archive" in item for item in progress_messages)
+
+
+def test_update_advisory_cache_excludes_withdrawn_records_from_archive(tmp_path: Path) -> None:
+    archive_path = tmp_path / "github-advisories.tar.gz"
+    destination = tmp_path / "cache" / "advisories.json"
+    buffer = io.BytesIO()
+    with tarfile.open(fileobj=buffer, mode="w:gz") as archive:
+        active_payload = json.dumps(
+            {
+                "id": "GHSA-active-0001",
+                "summary": "Active advisory",
+                "database_specific": {"severity": "high"},
+                "affected": [
+                    {
+                        "package": {"ecosystem": "RubyGems", "name": "rails"},
+                        "ranges": [
+                            {
+                                "type": "ECOSYSTEM",
+                                "events": [{"introduced": "7.0.0"}, {"fixed": "7.0.8"}],
+                            }
+                        ],
+                    }
+                ],
+            }
+        ).encode("utf-8")
+        active_info = tarfile.TarInfo(
+            name="advisory-database-main/advisories/github-reviewed/2026/01/GHSA-active-0001/GHSA-active-0001.json"
+        )
+        active_info.size = len(active_payload)
+        archive.addfile(active_info, io.BytesIO(active_payload))
+
+        withdrawn_payload = json.dumps(
+            {
+                "id": "GHSA-withdrawn-0001",
+                "summary": "Withdrawn advisory",
+                "withdrawn": "2026-01-15T00:00:00Z",
+                "database_specific": {"severity": "high"},
+                "affected": [
+                    {
+                        "package": {"ecosystem": "RubyGems", "name": "thor"},
+                        "ranges": [
+                            {
+                                "type": "ECOSYSTEM",
+                                "events": [{"introduced": "1.0.0"}, {"fixed": "1.4.0"}],
+                            }
+                        ],
+                    }
+                ],
+            }
+        ).encode("utf-8")
+        withdrawn_info = tarfile.TarInfo(
+            name="advisory-database-main/advisories/github-reviewed/2026/01/GHSA-withdrawn-0001/GHSA-withdrawn-0001.json"
+        )
+        withdrawn_info.size = len(withdrawn_payload)
+        archive.addfile(withdrawn_info, io.BytesIO(withdrawn_payload))
+    archive_path.write_bytes(buffer.getvalue())
+
+    count = update_advisory_cache(destination=destination, source_url=archive_path.resolve().as_uri())
+
+    assert count == 1
+    cached = json.loads(destination.read_text())
+    assert [item["id"] for item in cached] == ["GHSA-active-0001"]
 
 
 def test_load_advisory_database_raises_clear_error_when_missing(tmp_path: Path) -> None:
