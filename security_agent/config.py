@@ -17,6 +17,15 @@ class Config:
     max_tool_output_chars: int = 4000
 
 
+def default_advisory_cache_path() -> Path:
+    xdg_cache_home = os.getenv("XDG_CACHE_HOME")
+    if xdg_cache_home:
+        cache_root = Path(xdg_cache_home).expanduser()
+    else:
+        cache_root = Path.home() / ".cache"
+    return cache_root / "security-agent" / "advisories.json"
+
+
 def load_config(
     config_path: str | None = None,
     investigator_provider: str | None = None,
@@ -53,7 +62,7 @@ def load_config(
             max_tool_output_chars=max_chars,
         )
 
-    default_path = Path(__file__).resolve().parent / "data" / "advisories.json"
+    default_path = default_advisory_cache_path()
     return Config(
         advisory_path=default_path,
         investigator_provider=provider,

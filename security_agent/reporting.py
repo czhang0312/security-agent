@@ -15,7 +15,7 @@ def render_terminal(result: ScanResult) -> str:
     ]
 
     if not result.findings:
-        lines.append("No vulnerable gems matched the local advisory fixture.")
+        lines.append("No vulnerable gems matched the local advisory database.")
         return "\n".join(lines)
 
     for finding in result.findings:

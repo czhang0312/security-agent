@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from security_agent.advisories import AdvisoryDataUnavailableError
 from security_agent.config import Config
 from security_agent.scanner import run_scan
 
@@ -175,3 +176,33 @@ BUNDLED WITH
     assert result.findings[0].investigated is True
     assert result.findings[0].investigator_used == "mock_fallback"
     assert any("OpenAI fallback activated" in item for item in result.findings[0].assumptions)
+
+
+def test_run_scan_fails_clearly_when_advisory_cache_is_missing(tmp_path: Path) -> None:
+    (tmp_path / "app").mkdir()
+    (tmp_path / "config").mkdir()
+    (tmp_path / "config" / "routes.rb").write_text("Rails.application.routes.draw do\nend\n")
+    (tmp_path / "Gemfile").write_text("source 'https://rubygems.org'\n")
+    (tmp_path / "Gemfile.lock").write_text(
+        """GEM
+  remote: https://rubygems.org/
+  specs:
+    rails (7.0.7)
+
+PLATFORMS
+  ruby
+
+DEPENDENCIES
+  rails
+
+BUNDLED WITH
+   2.5.6
+"""
+    )
+
+    try:
+        run_scan(str(tmp_path), Config(advisory_path=tmp_path / "missing.json"))
+    except AdvisoryDataUnavailableError as exc:
+        assert "advisories update" in str(exc)
+    else:
+        raise AssertionError("Expected AdvisoryDataUnavailableError")

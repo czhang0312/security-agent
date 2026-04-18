@@ -33,7 +33,7 @@ class Advisory:
     gem_name: str
     severity: str
     summary: str
-    affected_versions: list[str]
+    affected_versions: list[Any]
     fixed_versions: list[str]
     cve: str | None = None
     require_names: list[str] = field(default_factory=list)
