@@ -3,8 +3,10 @@ from __future__ import annotations
 import json
 import re
 import shlex
+import socket
 import subprocess
 import sys
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Protocol
@@ -123,9 +125,23 @@ class HttpGeminiClient:
 
 class HttpOpenAIClient:
     API_URL = "https://api.openai.com/v1/responses"
+    RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
 
-    def __init__(self, api_key: str) -> None:
+    def __init__(
+        self,
+        api_key: str,
+        max_retries: int = 3,
+        base_delay_seconds: float = 1.0,
+        progress_reporter: ProgressReporter | None = None,
+        opener: Callable[..., Any] | None = None,
+        sleeper: Callable[[float], None] | None = None,
+    ) -> None:
         self.api_key = api_key
+        self.max_retries = max(1, max_retries)
+        self.base_delay_seconds = max(0.0, base_delay_seconds)
+        self.progress_reporter = progress_reporter
+        self.opener = opener or request.urlopen
+        self.sleeper = sleeper or time.sleep
 
     def generate(self, model: str, prompt: str) -> str:
         payload = json.dumps(
@@ -144,19 +160,65 @@ class HttpOpenAIClient:
             },
             method="POST",
         )
-        try:
-            with request.urlopen(http_request, timeout=30) as response:
-                body = json.loads(response.read().decode("utf-8"))
-        except error.HTTPError as exc:
-            details = exc.read().decode("utf-8", errors="replace")
-            raise InvestigationError(f"OpenAI API request failed: {exc.code} {details}") from exc
-        except error.URLError as exc:
-            raise InvestigationError(f"OpenAI API request failed: {exc.reason}") from exc
 
-        output_text = extract_response_output_text(body)
-        if output_text is None:
-            raise InvestigationError("OpenAI response did not include text content.")
-        return output_text
+        last_error: InvestigationError | None = None
+        for attempt in range(1, self.max_retries + 1):
+            try:
+                with self.opener(http_request, timeout=30) as response:
+                    body = json.loads(response.read().decode("utf-8"))
+            except error.HTTPError as exc:
+                details = read_http_error_details(exc)
+                if exc.code in self.RETRYABLE_STATUS_CODES and attempt < self.max_retries:
+                    self._report_retry(
+                        f"OpenAI API returned {exc.code}",
+                        attempt=attempt,
+                        total_attempts=self.max_retries,
+                    )
+                    self._sleep_before_retry(attempt)
+                    continue
+                raise InvestigationError(f"OpenAI API request failed: {exc.code} {details}") from exc
+            except (TimeoutError, socket.timeout) as exc:
+                last_error = InvestigationError("OpenAI API request timed out.")
+                if attempt < self.max_retries:
+                    self._report_retry(
+                        "OpenAI request timed out",
+                        attempt=attempt,
+                        total_attempts=self.max_retries,
+                    )
+                    self._sleep_before_retry(attempt)
+                    continue
+                raise last_error from exc
+            except error.URLError as exc:
+                last_error = InvestigationError(f"OpenAI API request failed: {exc.reason}")
+                if attempt < self.max_retries:
+                    self._report_retry(
+                        f"OpenAI network error: {exc.reason}",
+                        attempt=attempt,
+                        total_attempts=self.max_retries,
+                    )
+                    self._sleep_before_retry(attempt)
+                    continue
+                raise last_error from exc
+
+            output_text = extract_response_output_text(body)
+            if output_text is None:
+                raise InvestigationError("OpenAI response did not include text content.")
+            return output_text
+
+        raise last_error or InvestigationError("OpenAI API request failed after retries.")
+
+    def _sleep_before_retry(self, attempt: int) -> None:
+        delay = self.base_delay_seconds * (2 ** (attempt - 1))
+        self.sleeper(delay)
+
+    def _report_retry(self, reason: str, attempt: int, total_attempts: int) -> None:
+        if self.progress_reporter is None:
+            return
+        delay = self.base_delay_seconds * (2 ** (attempt - 1))
+        next_attempt = attempt + 1
+        self.progress_reporter(
+            f"{reason}, retrying in {delay:.1f}s (attempt {next_attempt}/{total_attempts})"
+        )
 
 
 class MockInvestigator:
@@ -449,7 +511,12 @@ def build_investigator(
     if provider == "openai":
         if not config.openai_api_key and client is None:
             raise InvestigationError("OpenAI investigator selected but no API key is configured.")
-        openai_client = client or HttpOpenAIClient(config.openai_api_key or "")
+        openai_client = client or HttpOpenAIClient(
+            config.openai_api_key or "",
+            max_retries=config.provider_max_retries,
+            base_delay_seconds=config.provider_retry_base_delay_seconds,
+            progress_reporter=progress_reporter,
+        )
         return OpenAIInvestigator(
             client=openai_client,
             model=config.openai_model,
@@ -458,6 +525,12 @@ def build_investigator(
             progress_reporter=progress_reporter,
         )
     return MockInvestigator()
+
+
+def read_http_error_details(exc: error.HTTPError) -> str:
+    if exc.fp is None:
+        return exc.reason or exc.msg
+    return exc.read().decode("utf-8", errors="replace")
 
 
 def make_stderr_progress_reporter() -> ProgressReporter:

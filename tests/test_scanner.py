@@ -2,7 +2,7 @@ from pathlib import Path
 
 from security_agent.advisories import AdvisoryDataUnavailableError
 from security_agent.config import Config
-from security_agent.investigation import InvestigationResult
+from security_agent.investigation import InvestigationError, InvestigationResult
 from security_agent.models import VulnerabilityFinding
 from security_agent.scanner import calculate_priority, run_scan
 
@@ -180,6 +180,68 @@ BUNDLED WITH
     assert result.findings[0].investigator_used == "mock_fallback"
     assert result.findings[0].priority == "high"
     assert any("OpenAI fallback activated" in item for item in result.findings[0].assumptions)
+
+
+def test_run_scan_falls_back_to_mock_when_openai_times_out(tmp_path: Path, monkeypatch) -> None:
+    (tmp_path / "app").mkdir()
+    (tmp_path / "app" / "services").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "app" / "services" / "parser.rb").write_text(
+        "class Parser\n  def call\n    Nokogiri::XML.parse(payload)\n  end\nend\n"
+    )
+    (tmp_path / "config").mkdir()
+    (tmp_path / "config" / "routes.rb").write_text("Rails.application.routes.draw do\nend\n")
+    (tmp_path / "Gemfile").write_text("source 'https://rubygems.org'\n")
+    (tmp_path / "Gemfile.lock").write_text(
+        """GEM
+  remote: https://rubygems.org/
+  specs:
+    nokogiri (1.16.0)
+
+PLATFORMS
+  ruby
+
+DEPENDENCIES
+  nokogiri
+
+BUNDLED WITH
+   2.5.6
+"""
+    )
+
+    advisories = tmp_path / "advisories.json"
+    advisories.write_text(
+        """[
+  {
+    "id": "SA-TEST-NOKOGIRI",
+    "gem_name": "nokogiri",
+    "severity": "medium",
+    "summary": "fixture",
+    "affected_versions": [">= 1.15.0", "< 1.16.3"],
+    "fixed_versions": ["1.16.3"],
+    "namespaces": ["Nokogiri"],
+    "symbols": ["Nokogiri::XML.parse"]
+  }
+]"""
+    )
+
+    class TimeoutInvestigator:
+        def investigate(self, context):
+            raise InvestigationError("OpenAI API request timed out.")
+
+    monkeypatch.setattr(
+        "security_agent.scanner.build_investigator",
+        lambda config, progress_reporter=None: TimeoutInvestigator(),
+    )
+
+    result = run_scan(
+        str(tmp_path),
+        Config(advisory_path=advisories, investigator_provider="openai"),
+    )
+
+    assert len(result.findings) == 1
+    assert result.findings[0].investigated is True
+    assert result.findings[0].investigator_used == "mock_fallback"
+    assert any("timed out" in item.lower() for item in result.findings[0].assumptions)
 
 
 def test_run_scan_fails_clearly_when_advisory_cache_is_missing(tmp_path: Path) -> None:

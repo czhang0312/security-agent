@@ -1,8 +1,11 @@
 import json
+import socket
+from urllib import error
 
 from security_agent.investigation import (
     CommandExecution,
     GeminiInvestigator,
+    HttpOpenAIClient,
     InvestigationContext,
     InvestigationError,
     OpenAIInvestigator,
@@ -219,3 +222,140 @@ def test_llm_investigator_rejects_invalid_response() -> None:
         assert "parse" in str(exc).lower()
     else:
         raise AssertionError("Expected InvestigationError for invalid provider response")
+
+
+class FakeHttpResponse:
+    def __init__(self, body: dict) -> None:
+        self._body = json.dumps(body).encode("utf-8")
+
+    def read(self) -> bytes:
+        return self._body
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        return None
+
+
+def test_http_openai_client_retries_timeout_then_succeeds() -> None:
+    progress_messages: list[str] = []
+    sleep_calls: list[float] = []
+    attempts = {"count": 0}
+
+    def opener(http_request, timeout=30):
+        attempts["count"] += 1
+        if attempts["count"] == 1:
+            raise TimeoutError("timed out")
+        return FakeHttpResponse(
+            {
+                "output": [
+                    {"type": "message", "content": [{"type": "output_text", "text": "{\"ok\": true}"}]}
+                ]
+            }
+        )
+
+    client = HttpOpenAIClient(
+        "test-key",
+        max_retries=3,
+        base_delay_seconds=1.0,
+        progress_reporter=progress_messages.append,
+        opener=opener,
+        sleeper=sleep_calls.append,
+    )
+
+    result = client.generate("gpt-test", "hello")
+
+    assert result == "{\"ok\": true}"
+    assert attempts["count"] == 2
+    assert sleep_calls == [1.0]
+    assert progress_messages == ["OpenAI request timed out, retrying in 1.0s (attempt 2/3)"]
+
+
+def test_http_openai_client_retries_503_then_succeeds() -> None:
+    progress_messages: list[str] = []
+    sleep_calls: list[float] = []
+    attempts = {"count": 0}
+
+    def opener(http_request, timeout=30):
+        attempts["count"] += 1
+        if attempts["count"] == 1:
+            raise error.HTTPError(
+                url="https://api.openai.com/v1/responses",
+                code=503,
+                msg="unavailable",
+                hdrs=None,
+                fp=None,
+            )
+        return FakeHttpResponse(
+            {
+                "output": [
+                    {"type": "message", "content": [{"type": "output_text", "text": "{\"ok\": true}"}]}
+                ]
+            }
+        )
+
+    client = HttpOpenAIClient(
+        "test-key",
+        max_retries=3,
+        base_delay_seconds=1.0,
+        progress_reporter=progress_messages.append,
+        opener=opener,
+        sleeper=sleep_calls.append,
+    )
+
+    result = client.generate("gpt-test", "hello")
+
+    assert result == "{\"ok\": true}"
+    assert attempts["count"] == 2
+    assert sleep_calls == [1.0]
+    assert progress_messages == ["OpenAI API returned 503, retrying in 1.0s (attempt 2/3)"]
+
+
+def test_http_openai_client_fails_fast_on_401() -> None:
+    attempts = {"count": 0}
+
+    def opener(http_request, timeout=30):
+        attempts["count"] += 1
+        raise error.HTTPError(
+            url="https://api.openai.com/v1/responses",
+            code=401,
+            msg="unauthorized",
+            hdrs=None,
+            fp=None,
+        )
+
+    client = HttpOpenAIClient("test-key", max_retries=3, opener=opener, sleeper=lambda seconds: None)
+
+    try:
+        client.generate("gpt-test", "hello")
+    except InvestigationError as exc:
+        assert "401" in str(exc)
+    else:
+        raise AssertionError("Expected InvestigationError")
+
+    assert attempts["count"] == 1
+
+
+def test_http_openai_client_raises_after_retry_exhaustion() -> None:
+    sleep_calls: list[float] = []
+
+    def opener(http_request, timeout=30):
+        raise socket.timeout("timed out")
+
+    client = HttpOpenAIClient(
+        "test-key",
+        max_retries=3,
+        base_delay_seconds=0.5,
+        opener=opener,
+        sleeper=sleep_calls.append,
+    )
+
+    try:
+        client.generate("gpt-test", "hello")
+    except InvestigationError as exc:
+        assert "timed out" in str(exc).lower()
+    else:
+        raise AssertionError("Expected InvestigationError")
+
+    assert sleep_calls == [0.5, 1.0]
