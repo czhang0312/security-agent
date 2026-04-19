@@ -6,13 +6,34 @@ build-backend = "setuptools.build_meta"
 name = "security-agent"
 version = "0.1.0"
 description = "Local CLI for Rails dependency vulnerability triage"
-readme = "PRD.md"
+readme = "README.md"
 requires-python = ">=3.11"
 dependencies = []
+license = {file = "LICENSE"}
+authors = [
+  {name = "Clark Zhang"}
+]
+keywords = ["security", "cli", "rails", "ruby", "vulnerability", "openai"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Security",
+  "Topic :: Software Development :: Quality Assurance",
+]
 
 [project.scripts]
 security-agent = "security_agent.cli:main"
 
+[project.urls]
+Homepage = "https://github.com/clarkzhang/security-agent"
+Repository = "https://github.com/clarkzhang/security-agent"
+Issues = "https://github.com/clarkzhang/security-agent/issues"
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-

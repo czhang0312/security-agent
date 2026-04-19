@@ -20,19 +20,22 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="security-agent")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    scan_parser = subparsers.add_parser("scan", help="Scan a Rails repository for vulnerable gems.")
+    scan_parser = subparsers.add_parser(
+        "scan",
+        help="Scan a Rails repository for vulnerable gems. Run `security-agent advisories update` first.",
+    )
     scan_parser.add_argument("repo_path", nargs="?", default=".")
     scan_parser.add_argument("--json", action="store_true", dest="json_output")
     scan_parser.add_argument("--output", type=Path)
     scan_parser.add_argument(
         "--investigator",
         choices=("mock", "gemini", "openai"),
-        help="Override the investigator provider for this run.",
+        help="Override the investigator provider for this run. `openai` is the recommended real provider for the MVP.",
     )
     scan_parser.add_argument(
         "--config",
         dest="config_path",
-        help="Path to a local advisory cache JSON file.",
+        help="Path to an advisory cache JSON file. Defaults to the local cache created by `security-agent advisories update`.",
     )
     scan_parser.add_argument(
         "--max-investigations",
@@ -45,7 +48,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="Manage the local advisory data cache.",
     )
     advisories_subparsers = advisories_parser.add_subparsers(dest="advisories_command", required=True)
-    update_parser = advisories_subparsers.add_parser("update", help="Download and rebuild the local advisory cache.")
+    update_parser = advisories_subparsers.add_parser(
+        "update",
+        help="Download advisory data and rebuild the local advisory cache used by `scan`.",
+    )
     update_parser.add_argument(
         "--output",
         type=Path,
