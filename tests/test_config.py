@@ -14,6 +14,7 @@ def test_load_config_defaults_to_mock(monkeypatch) -> None:
     assert config.gemini_api_key is None
     assert config.openai_api_key is None
     assert config.max_investigation_steps == 6
+    assert config.max_investigations == 3
 
 
 def test_load_config_uses_override_and_env(monkeypatch) -> None:
@@ -21,6 +22,7 @@ def test_load_config_uses_override_and_env(monkeypatch) -> None:
     monkeypatch.setenv("OPENAI_API_KEY", "openai-key")
     monkeypatch.setenv("SECURITY_AGENT_MAX_INVESTIGATION_STEPS", "9")
     monkeypatch.setenv("SECURITY_AGENT_MAX_TOOL_OUTPUT_CHARS", "1234")
+    monkeypatch.setenv("SECURITY_AGENT_MAX_INVESTIGATIONS", "5")
 
     config = load_config(investigator_provider="gemini")
 
@@ -29,6 +31,7 @@ def test_load_config_uses_override_and_env(monkeypatch) -> None:
     assert config.openai_api_key == "openai-key"
     assert config.max_investigation_steps == 9
     assert config.max_tool_output_chars == 1234
+    assert config.max_investigations == 5
 
 
 def test_load_config_supports_openai_override(monkeypatch) -> None:

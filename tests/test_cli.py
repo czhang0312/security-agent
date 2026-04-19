@@ -59,6 +59,7 @@ BUNDLED WITH
 
     assert exit_code == 1
     assert captured.out.lstrip().startswith("{")
+    assert "Investigation 1/1: SA-TEST-RAILS (rails)" in captured.err
     assert "OpenAI failed, falling back to mock" in captured.err
 
 

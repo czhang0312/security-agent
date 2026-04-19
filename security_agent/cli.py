@@ -34,6 +34,11 @@ def build_parser() -> argparse.ArgumentParser:
         dest="config_path",
         help="Path to a local advisory cache JSON file.",
     )
+    scan_parser.add_argument(
+        "--max-investigations",
+        type=int,
+        help="Override how many matched advisories are investigated during this scan.",
+    )
 
     advisories_parser = subparsers.add_parser(
         "advisories",
@@ -61,6 +66,8 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     if args.command == "scan":
         config = load_config(args.config_path, investigator_provider=args.investigator)
+        if args.max_investigations is not None:
+            config.max_investigations = max(0, args.max_investigations)
 
         try:
             result = run_scan(repo_path=args.repo_path, config=config, progress_reporter=progress_reporter)

@@ -15,6 +15,7 @@ class Config:
     openai_model: str = "gpt-5-mini"
     max_investigation_steps: int = 6
     max_tool_output_chars: int = 4000
+    max_investigations: int = 3
 
 
 def default_advisory_cache_path() -> Path:
@@ -49,6 +50,7 @@ def load_config(
     openai_model = os.getenv("SECURITY_AGENT_OPENAI_MODEL", "gpt-5-mini")
     max_steps = _int_from_env("SECURITY_AGENT_MAX_INVESTIGATION_STEPS", 6)
     max_chars = _int_from_env("SECURITY_AGENT_MAX_TOOL_OUTPUT_CHARS", 4000)
+    max_investigations = _int_from_env("SECURITY_AGENT_MAX_INVESTIGATIONS", 3)
 
     if config_path is not None:
         return Config(
@@ -60,6 +62,7 @@ def load_config(
             openai_model=openai_model,
             max_investigation_steps=max_steps,
             max_tool_output_chars=max_chars,
+            max_investigations=max_investigations,
         )
 
     default_path = default_advisory_cache_path()
@@ -72,6 +75,7 @@ def load_config(
         openai_model=openai_model,
         max_investigation_steps=max_steps,
         max_tool_output_chars=max_chars,
+        max_investigations=max_investigations,
     )
 
 

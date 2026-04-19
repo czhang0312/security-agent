@@ -58,7 +58,7 @@ def run_scan(
 
     rank_findings_for_selection(findings)
     findings.sort(key=_finding_sort_key)
-    investigate_top_finding(repo.root, findings, config, progress_reporter=progress_reporter)
+    investigate_findings(repo.root, findings, config, progress_reporter=progress_reporter)
     rank_findings(findings)
     findings.sort(key=_finding_sort_key)
 
@@ -85,7 +85,7 @@ def rank_findings(findings: list[VulnerabilityFinding]) -> None:
         finding.priority = calculate_priority(finding)
 
 
-def investigate_top_finding(
+def investigate_findings(
     repo_root: str,
     findings: list[VulnerabilityFinding],
     config: Config,
@@ -94,26 +94,34 @@ def investigate_top_finding(
     if not findings:
         return
 
-    selected = findings[0]
-    context = InvestigationContext(repo_root=repo_root, finding=selected)
+    budget = max(0, config.max_investigations)
+    selected_findings = findings[:budget]
+    total = len(selected_findings)
     provider_name = config.investigator_provider.lower()
-    try:
-        investigator = build_investigator(config, progress_reporter=progress_reporter)
-        result = investigator.investigate(context)
-        investigator_used = provider_name
-    except InvestigationError as exc:
-        if progress_reporter is not None and provider_name == "openai":
-            progress_reporter("OpenAI failed, falling back to mock")
-        fallback_result = MockInvestigator().investigate(context)
-        fallback_result.assumptions.append(
-            f"{provider_display_name(provider_name)} fallback activated: {exc}"
-        )
-        fallback_result.reasoning_summary = (
-            f"{fallback_result.reasoning_summary} Used mock investigator fallback."
-        )
-        result = fallback_result
-        investigator_used = "mock_fallback"
-    apply_investigation_result(selected, result, investigator_used)
+
+    for index, selected in enumerate(selected_findings, start=1):
+        if progress_reporter is not None:
+            progress_reporter(
+                f"Investigation {index}/{total}: {selected.advisory_id} ({selected.gem_name})"
+            )
+        context = InvestigationContext(repo_root=repo_root, finding=selected)
+        try:
+            investigator = build_investigator(config, progress_reporter=progress_reporter)
+            result = investigator.investigate(context)
+            investigator_used = provider_name
+        except InvestigationError as exc:
+            if progress_reporter is not None and provider_name == "openai":
+                progress_reporter("OpenAI failed, falling back to mock")
+            fallback_result = MockInvestigator().investigate(context)
+            fallback_result.assumptions.append(
+                f"{provider_display_name(provider_name)} fallback activated: {exc}"
+            )
+            fallback_result.reasoning_summary = (
+                f"{fallback_result.reasoning_summary} Used mock investigator fallback."
+            )
+            result = fallback_result
+            investigator_used = "mock_fallback"
+        apply_investigation_result(selected, result, investigator_used)
 
 
 def apply_investigation_result(
