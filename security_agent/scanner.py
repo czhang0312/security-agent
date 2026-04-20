@@ -110,8 +110,10 @@ def investigate_findings(
             result = investigator.investigate(context)
             investigator_used = provider_name
         except InvestigationError as exc:
-            if progress_reporter is not None and provider_name == "openai":
-                progress_reporter("OpenAI failed, falling back to mock")
+            if progress_reporter is not None:
+                progress_reporter(
+                    f"{provider_display_name(provider_name)} failed, falling back to mock: {exc}"
+                )
             fallback_result = MockInvestigator().investigate(context)
             fallback_result.assumptions.append(
                 f"{provider_display_name(provider_name)} fallback activated: {exc}"
