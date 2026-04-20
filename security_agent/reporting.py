@@ -45,11 +45,11 @@ def render_terminal(result: ScanResult, color_enabled: bool = False) -> str:
         lines.extend(
             [
                 title,
-                f"  {style('Severity', 'dim', enabled=color_enabled)}: {finding.severity} ({directness})  "
-                f"{style('Reachability', 'dim', enabled=color_enabled)}: {reachability_text}  "
-                f"{style('Confidence', 'dim', enabled=color_enabled)}: {confidence}",
-                f"  {style('Fix', 'dim', enabled=color_enabled)}: {fixed_versions}  "
-                f"{style('Investigator', 'dim', enabled=color_enabled)}: {finding.investigator_used or 'not_run'}",
+                f"  {style('Severity', 'dim', enabled=color_enabled)}: {finding.severity} ({directness})",
+                f"  {style('Reachability', 'dim', enabled=color_enabled)}: {reachability_text}",
+                f"  {style('Confidence', 'dim', enabled=color_enabled)}: {confidence}",
+                f"  {style('Fix', 'dim', enabled=color_enabled)}: {fixed_versions}",
+                f"  {style('Investigator', 'dim', enabled=color_enabled)}: {finding.investigator_used or 'not_run'}",
                 f"  {style('Summary', 'dim', enabled=color_enabled)}: {finding.summary}",
             ]
         )

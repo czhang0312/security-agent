@@ -40,6 +40,8 @@ def test_render_terminal_includes_investigation_details() -> None:
     assert "Investigator: openai" in rendered
     assert "Reachability: reachable" in rendered
     assert "Confidence: 0.86" in rendered
+    assert "Severity: high (direct)" in rendered
+    assert "Fix: 7.0.8" in rendered
     assert "Investigation: Observed rails referenced from application code." in rendered
     assert "Evidence: Matched search term in app/services/example.rb:4" in rendered
 
