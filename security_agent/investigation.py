@@ -14,6 +14,7 @@ from urllib import error, parse, request
 
 from security_agent.config import Config
 from security_agent.models import EvidenceItem, VulnerabilityFinding
+from security_agent.terminal_ui import style
 
 
 @dataclass(slots=True)
@@ -533,11 +534,23 @@ def read_http_error_details(exc: error.HTTPError) -> str:
     return exc.read().decode("utf-8", errors="replace")
 
 
-def make_stderr_progress_reporter() -> ProgressReporter:
+def make_stderr_progress_reporter(color_enabled: bool = False) -> ProgressReporter:
     def report(message: str) -> None:
-        print(message, file=sys.stderr, flush=True)
+        print(format_progress_message(message, color_enabled=color_enabled), file=sys.stderr, flush=True)
 
     return report
+
+
+def format_progress_message(message: str, color_enabled: bool = False) -> str:
+    if message.startswith("Investigation "):
+        return f"{style('scan', 'cyan', 'bold', enabled=color_enabled)}: {message}"
+    if message.startswith("OpenAI"):
+        return f"{style('openai', 'magenta', 'bold', enabled=color_enabled)}: {message}"
+    if message.startswith("Gemini"):
+        return f"{style('gemini', 'blue', 'bold', enabled=color_enabled)}: {message}"
+    if message.startswith("Downloading") or message.startswith("Extracting") or message.startswith("Parsing") or message.startswith("Writing"):
+        return f"{style('update', 'yellow', 'bold', enabled=color_enabled)}: {message}"
+    return f"{style('info', 'dim', enabled=color_enabled)}: {message}"
 
 
 def existing_search_roots(repo_root: str) -> list[str]:

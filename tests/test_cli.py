@@ -52,6 +52,8 @@ BUNDLED WITH
             "--investigator",
             "openai",
             "--json",
+            "--color",
+            "always",
         ]
     )
 
@@ -61,6 +63,7 @@ BUNDLED WITH
     assert captured.out.lstrip().startswith("{")
     assert "Investigation 1/1: SA-TEST-RAILS (rails)" in captured.err
     assert "OpenAI failed, falling back to mock: OpenAI investigator selected but no API key is configured." in captured.err
+    assert "\u001b[" in captured.err
 
 
 def test_cli_advisories_update_writes_cache_from_archive(tmp_path: Path, capsys) -> None:

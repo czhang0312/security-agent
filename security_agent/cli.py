@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
+import sys
 from typing import Sequence
 
 from security_agent.advisories import (
@@ -14,6 +15,7 @@ from security_agent.investigation import make_stderr_progress_reporter
 from security_agent.reporting import render_json, render_terminal
 from security_agent.repo import UnsupportedRepoError
 from security_agent.scanner import run_scan
+from security_agent.terminal_ui import resolve_color_enabled
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -27,6 +29,12 @@ def build_parser() -> argparse.ArgumentParser:
     scan_parser.add_argument("repo_path", nargs="?", default=".")
     scan_parser.add_argument("--json", action="store_true", dest="json_output")
     scan_parser.add_argument("--output", type=Path)
+    scan_parser.add_argument(
+        "--color",
+        choices=("auto", "always", "never"),
+        default="auto",
+        help="Control color in human-readable output and progress messages.",
+    )
     scan_parser.add_argument(
         "--investigator",
         choices=("mock", "gemini", "openai"),
@@ -68,9 +76,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
 
-    progress_reporter = make_stderr_progress_reporter()
-
     if args.command == "scan":
+        color_enabled = resolve_color_enabled(args.color, sys.stderr)
+        progress_reporter = make_stderr_progress_reporter(color_enabled=color_enabled)
         config = load_config(args.config_path, investigator_provider=args.investigator)
         if args.max_investigations is not None:
             config.max_investigations = max(0, args.max_investigations)
@@ -82,7 +90,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         except AdvisoryDataUnavailableError as exc:
             parser.exit(status=2, message=f"error: {exc}\n")
 
-        rendered = render_json(result) if args.json_output else render_terminal(result)
+        rendered = render_json(result) if args.json_output else render_terminal(result, color_enabled=color_enabled)
 
         if args.output:
             args.output.write_text(rendered + ("\n" if not rendered.endswith("\n") else ""))
@@ -92,6 +100,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 1 if result.findings else 0
 
     if args.command == "advisories" and args.advisories_command == "update":
+        progress_reporter = make_stderr_progress_reporter(
+            color_enabled=resolve_color_enabled("auto", sys.stderr)
+        )
         config = load_config()
         destination = args.output or config.advisory_path
         try:
