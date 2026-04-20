@@ -218,7 +218,7 @@ class HttpOpenAIClient:
         delay = self.base_delay_seconds * (2 ** (attempt - 1))
         next_attempt = attempt + 1
         self.progress_reporter(
-            f"{reason}, retrying in {delay:.1f}s (attempt {next_attempt}/{total_attempts})"
+            f"retrying after {reason.lower()} in {delay:.1f}s (attempt {next_attempt}/{total_attempts})"
         )
 
 
@@ -360,12 +360,12 @@ class BaseLLMInvestigator:
         observations: list[dict[str, Any]] = []
         commands_run: list[str] = []
         self.report_progress(
-            f"{self.provider_name}: investigating {context.finding.gem_name} {context.finding.installed_version}"
+            f"investigating {context.finding.gem_name} {context.finding.installed_version}"
         )
 
         for step_index in range(self.max_steps):
             step_number = step_index + 1
-            self.report_progress(f"{self.provider_name} step {step_number}/{self.max_steps}: requesting model")
+            self.report_progress(f"step {step_number}/{self.max_steps}: requesting model")
             prompt = self._build_prompt(context, observations, step_index + 1)
             response_text = self.client.generate(self.model, prompt)
             response = parse_agent_response(response_text)
@@ -374,7 +374,7 @@ class BaseLLMInvestigator:
             if action == "tool":
                 execution = execute_tool_action(self.executor, response, context.repo_root)
                 self.report_progress(
-                    f"{self.provider_name} step {step_number}/{self.max_steps}: running {truncate_command(execution.command)}"
+                    f"step {step_number}/{self.max_steps}: running {truncate_command(execution.command)}"
                 )
                 commands_run.append(execution.command)
                 observations.append(
@@ -389,7 +389,7 @@ class BaseLLMInvestigator:
 
             if action == "final":
                 self.report_progress(
-                    f"{self.provider_name} final: {str(response.get('status', 'unknown')).strip() or 'unknown'}"
+                    f"final: {str(response.get('status', 'unknown')).strip() or 'unknown'}"
                 )
                 return finalize_agent_response(response, commands_run)
 
@@ -543,9 +543,16 @@ def make_stderr_progress_reporter(color_enabled: bool = False) -> ProgressReport
 
 def format_progress_message(message: str, color_enabled: bool = False) -> str:
     if message.startswith("Investigation "):
-        return f"{style('scan', 'cyan', 'bold', enabled=color_enabled)}: {message}"
-    if message.startswith("OpenAI"):
+        return style(message, "cyan", "bold", enabled=color_enabled)
+    if (
+        message.startswith("investigating ")
+        or message.startswith("step ")
+        or message.startswith("final:")
+        or message.startswith("retrying after ")
+    ):
         return f"{style('openai', 'magenta', 'bold', enabled=color_enabled)}: {message}"
+    if message.startswith("OpenAI failed"):
+        return f"{style('openai', 'magenta', 'bold', enabled=color_enabled)}: {message[len('OpenAI '):]}"
     if message.startswith("Gemini"):
         return f"{style('gemini', 'blue', 'bold', enabled=color_enabled)}: {message}"
     if message.startswith("Downloading") or message.startswith("Extracting") or message.startswith("Parsing") or message.startswith("Writing"):

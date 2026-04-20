@@ -161,11 +161,11 @@ def test_openai_investigator_executes_bounded_tool_loop() -> None:
     assert result.evidence[0].path == "app/services/parser.rb"
     assert len(client.prompts) == 2
     assert progress_messages == [
-        "OpenAI: investigating nokogiri 1.16.0",
-        "OpenAI step 1/3: requesting model",
-        "OpenAI step 1/3: running ls app",
-        "OpenAI step 2/3: requesting model",
-        "OpenAI final: reachable",
+        "investigating nokogiri 1.16.0",
+        "step 1/3: requesting model",
+        "step 1/3: running ls app",
+        "step 2/3: requesting model",
+        "final: reachable",
     ]
 
 
@@ -206,9 +206,9 @@ def test_llm_investigator_returns_incomplete_result_on_step_limit() -> None:
     assert result.status == "possibly_reachable"
     assert "did not complete" in result.reasoning_summary
     assert progress_messages == [
-        "OpenAI: investigating nokogiri 1.16.0",
-        "OpenAI step 1/1: requesting model",
-        "OpenAI step 1/1: running ls app",
+        "investigating nokogiri 1.16.0",
+        "step 1/1: requesting model",
+        "step 1/1: running ls app",
     ]
 
 
@@ -269,7 +269,7 @@ def test_http_openai_client_retries_timeout_then_succeeds() -> None:
     assert result == "{\"ok\": true}"
     assert attempts["count"] == 2
     assert sleep_calls == [1.0]
-    assert progress_messages == ["OpenAI request timed out, retrying in 1.0s (attempt 2/3)"]
+    assert progress_messages == ["retrying after openai request timed out in 1.0s (attempt 2/3)"]
 
 
 def test_http_openai_client_retries_503_then_succeeds() -> None:
@@ -309,7 +309,7 @@ def test_http_openai_client_retries_503_then_succeeds() -> None:
     assert result == "{\"ok\": true}"
     assert attempts["count"] == 2
     assert sleep_calls == [1.0]
-    assert progress_messages == ["OpenAI API returned 503, retrying in 1.0s (attempt 2/3)"]
+    assert progress_messages == ["retrying after openai api returned 503 in 1.0s (attempt 2/3)"]
 
 
 def test_http_openai_client_fails_fast_on_401() -> None:

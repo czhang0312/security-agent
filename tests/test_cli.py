@@ -62,7 +62,7 @@ BUNDLED WITH
     assert exit_code == 1
     assert captured.out.lstrip().startswith("{")
     assert "Investigation 1/1: SA-TEST-RAILS (rails)" in captured.err
-    assert "OpenAI failed, falling back to mock: OpenAI investigator selected but no API key is configured." in captured.err
+    assert "failed, falling back to mock: OpenAI investigator selected but no API key is configured." in captured.err
     assert "\u001b[" in captured.err
 
 
