@@ -1,6 +1,6 @@
 # security-agent
 
-`security-agent` is a local CLI for Ruby on Rails repositories that finds vulnerable gems, investigates whether the vulnerable functionality appears reachable in your app, and ranks what to patch first.
+`security-agent` is a local CLI for Ruby on Rails repositories that finds vulnerable gems, uses LLM-based agentic reachability analysis to inspect whether vulnerable functionality appears reachable in your app, and ranks what to patch first.
 
 This is an early MVP. It is designed for technical users and small teams, not as a fully hardened enterprise scanner.
 
@@ -75,13 +75,51 @@ JSON:
 security-agent scan ../progress_tracker --investigator openai --json > result.json
 ```
 
+## Example Output
+
+During investigation, progress and retry messages are printed to `stderr`. The final human-readable report is printed afterward. Real terminal output may be colored in `auto` or `always` color mode; use `--color never` when you need plain text with no ANSI escape codes.
+
+```text
+$ security-agent scan /path/to/rails-repo --investigator openai --max-investigations 1 --color never
+Investigation 1/1: GHSA-xxxx-yyyy-zzzz (actionpack)
+
+security-agent
+Repo: /path/to/rails-repo
+Type: rails
+Dependencies: 82
+Findings: 2
+Investigated: 1
+
+Summary: 1 investigated, 1 high-priority findings
+
+[HIGH] actionpack 7.0.7  CVE-2024-47887
+  Severity: high (direct)
+  Reachability: possibly_reachable
+  Confidence: 0.78
+  Fix: 7.0.8.7, 7.1.4.1
+  Investigator: openai
+  Summary: Possible ReDoS in HTTP token authentication parsing.
+  Investigation: The app enables token authentication on API controllers, so the vulnerable parser may be reachable from authenticated API requests.
+  Evidence: Token authentication is configured for API requests (app/controllers/api/base_controller.rb:12)
+  Evidence: API routes expose JSON endpoints under /api (config/routes.rb:8)
+
+[MEDIUM] nokogiri 1.15.4  GHSA-abcd-1234-efgh
+  Severity: medium (transitive)
+  Reachability: not_investigated
+  Confidence: n/a
+  Fix: 1.16.2
+  Investigator: not_run
+  Summary: XML parsing advisory matched through a transitive dependency.
+```
+
 ## How It Works
 
 1. Parse `Gemfile.lock`
 2. Match installed gems against the local advisory cache
-3. Rank the findings
-4. Investigate the top 3 advisories by default
-5. Return reachability evidence and a patch-priority report
+3. Prioritize matched advisories for investigation using advisory severity and whether the vulnerable gem is a direct dependency
+4. Investigate the top 3 advisories by default with a bounded, read-only agentic reachability analysis
+5. Rerank findings using severity, directness, reachability status, confidence, and investigation evidence
+6. Return reachability evidence and a patch-priority report
 
 Current default investigation budget:
 
