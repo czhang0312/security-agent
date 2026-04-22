@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.2
+
+- Clarified README positioning around LLM-based agentic reachability analysis
+- Added concise example terminal output with sanitized paths and report fields
+- Expanded the README workflow explanation for finding prioritization and reranking
+
 ## 0.1.1
 
 - Improved human-readable terminal report layout
