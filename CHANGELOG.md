@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.1
+
+- Improved human-readable terminal report layout
+- Added ANSI color support for scan output and progress messages
+- Reduced duplicated progress labels in agent investigation output
+- Improved provider fallback progress messages
+
 ## 0.1.0
 
 - Initial public MVP release
